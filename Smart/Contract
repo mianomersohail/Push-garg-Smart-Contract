@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+contract Deal {
+    mapping(address => uint256) public Balance;
+    mapping(address => uint256) public LockedAmount;
+    address[] public UsesAddresses;
+
+    // Fallback function to receive Ether
+    receive() external payable {
+        require(msg.value > 0, "Deposit should be bigger than zero");
+        Balance[msg.sender] += msg.value;
+    }
+
+    // Modifier to check if an address is already involved in a deal
+    modifier CheckAddress(address _user) {
+        bool isPart = false;
+        for (uint i = 0; i < UsesAddresses.length; i++) {
+            if (msg.sender == UsesAddresses[i] || _user == UsesAddresses[i]) {
+                isPart = true;
+                break;
+            }
+        }
+        require(!isPart, "Buyer or Seller address is already in use. Please complete your previous deal to add a new one");
+        _;
+    }
+
+    // Enum to represent deal statuses
+    enum Status {DealAdd, SellerAgree, SellerAgreeDeal, BuyerAgreeeDeal, DealDone}
+
+    // Struct to represent a new deal
+    struct NewDeal {
+        uint Id;
+        uint LockAmount;
+        address Seller;
+        address Buyer;
+        Status status;
+    }
+
+    NewDeal[] public NewDeals;
+
+    // Function to add a new deal
+    function AddNewDeal(address _Seller, uint _LockAmount) public CheckAddress(_Seller) {
+        require(_LockAmount > 0, "Locked amount should not be zero");
+        require(Balance[msg.sender] >= _LockAmount && Balance[_Seller] >= _LockAmount, 
+            "Both parties' balances should be at least equal to the lock amount");
+
+        NewDeals.push(NewDeal(NewDeals.length, _LockAmount, _Seller, msg.sender, Status.DealAdd));
+    }
+
+    // Function for seller to agree to the deal
+    function SellerAgree(uint _Id) public {
+        require(NewDeals[_Id].status == Status.DealAdd, "Deal is not valid or already closed");
+        require(msg.sender == NewDeals[_Id].Seller, "Only seller of this deal can agree");
+        require(Balance[msg.sender] == NewDeals[_Id].LockAmount && Balance[NewDeals[_Id].Buyer] == NewDeals[_Id].LockAmount, 
+            "Both parties' balances should be equal to the locked amount");
+
+        Balance[msg.sender] -= NewDeals[_Id].LockAmount;
+        Balance[NewDeals[_Id].Buyer] -= NewDeals[_Id].LockAmount;
+        UsesAddresses.push(msg.sender);
+        UsesAddresses.push(NewDeals[_Id].Buyer);
+        NewDeals[_Id].status = Status.SellerAgree;
+        LockedAmount[msg.sender] = NewDeals[_Id].LockAmount;
+        LockedAmount[NewDeals[_Id].Buyer] = NewDeals[_Id].LockAmount;
+    }
+
+    // Function for seller to agree to finalize the deal
+    function SellerAgreeDeal(uint _Id) public {
+        require(msg.sender == NewDeals[_Id].Seller, "Only seller of the deal can agree");
+        require(NewDeals[_Id].status == Status.SellerAgree, 
+            "Seller must first agree to continue, or the deal is already closed");
+        NewDeals[_Id].status = Status.SellerAgreeDeal;
+    }
+
+    // Function for buyer to agree to finalize the deal
+    function BuyerAgree(uint _Id) public {
+        require(NewDeals[_Id].status == Status.SellerAgreeDeal, "Seller has not agreed yet, or the deal is already closed");
+        require(msg.sender == NewDeals[_Id].Buyer, "Only buyer of this deal can agree");
+        
+        NewDeals[_Id].status = Status.BuyerAgreeeDeal;
+        NewDeals[_Id].status = Status.DealDone;
+
+        // Transfer locked amounts back to buyer and seller
+        Balance[NewDeals[_Id].Buyer] += LockedAmount[NewDeals[_Id].Buyer];
+        LockedAmount[NewDeals[_Id].Buyer] = 0;
+        Balance[NewDeals[_Id].Seller] += LockedAmount[NewDeals[_Id].Seller];
+        LockedAmount[NewDeals[_Id].Seller] = 0;
+
+        // Remove buyer and seller addresses from the UsesAddresses array
+        _removeAddress(NewDeals[_Id].Buyer);
+        _removeAddress(NewDeals[_Id].Seller);
+
+        NewDeals[_Id].status = Status.DealDone;
+    }
+
+    // Private function to remove an address from the UsesAddresses array
+    function _removeAddress(address _user) private {
+        for (uint i = 0; i < UsesAddresses.length; i++) {
+            if (UsesAddresses[i] == _user) {
+                // Shift all elements after the matched index to the left
+                for (uint j = i; j < UsesAddresses.length - 1; j++) {
+                    UsesAddresses[j] = UsesAddresses[j + 1];
+                }
+                UsesAddresses.pop(); // Remove the last element
+                break;
+            }
+        }
+    }
+}
