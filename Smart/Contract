@@ -4,6 +4,15 @@ contract Deal{
     mapping(address => uint256) internal Balance;
     mapping(address => uint256) public LockedAmount;
     mapping(address => bool) public UsesAddresses;
+    bool private locked = false;
+
+modifier noReentrancy() {
+    require(!locked, "No reentrancy");
+    locked = true;
+    _;
+    locked = false;
+}
+
     modifier CheckForDealCancel(uint _Id){
         require(NewDeals[_Id].BuyerCancelDeal!=true && NewDeals[_Id].SellerCancelDeal!=true,"One Party Not Want to Continue he want to Cancel The Deal Cancel the Deal to Unlock Your funds");
         _;
@@ -20,7 +29,7 @@ contract Deal{
         Balance[msg.sender] += msg.value;
         require(Balance[msg.sender] > BalanceBefore, "Deposit failed");
     }
-    function Withdraw(uint _amount) public {
+    function Withdraw(uint _amount) public noReentrancy{
         require(Balance[msg.sender] >= _amount, "Your balance is not enough for withdrawal");
         uint256 BalanceBefore = Balance[msg.sender];
         Balance[msg.sender] -= _amount;
@@ -61,7 +70,7 @@ contract Deal{
             status: Status.DealAdd
         }));
     }
-    function SellerAgree(uint _Id) public CheckForDealCancel(_Id){
+    function SellerAgree(uint _Id) public CheckForDealCancel(_Id) noReentrancy{
         require(NewDeals[_Id].status == Status.DealAdd, "Deal is not added or already closed");
         require(msg.sender == NewDeals[_Id].Seller, "Only the seller of this deal can agree");
         require(Balance[NewDeals[_Id].Seller] >= NewDeals[_Id].LockAmount && Balance[NewDeals[_Id].Buyer] >= NewDeals[_Id].LockAmount, "Both parties should have at least the locked amount");
@@ -72,12 +81,12 @@ contract Deal{
         LockedAmount[msg.sender] = NewDeals[_Id].LockAmount;
         LockedAmount[NewDeals[_Id].Buyer] = NewDeals[_Id].LockAmount;
     }
-    function SellerAgreeDeal(uint _Id) public CheckForDealCancel(_Id){
+    function SellerAgreeDeal(uint _Id) public CheckForDealCancel(_Id) noReentrancy{
         require(msg.sender == NewDeals[_Id].Seller, "Only the seller of the deal can agree");
         require(NewDeals[_Id].status == Status.SellerAgree, "Seller must first agree to continue or the deal is already closed");
         NewDeals[_Id].status = Status.SellerAgreeDeal;
     }
-    function BuyerAgree(uint _Id) public CheckForDealCancel(_Id){
+    function BuyerAgree(uint _Id) public CheckForDealCancel(_Id) noReentrancy{
         require(NewDeals[_Id].status == Status.SellerAgreeDeal, "Seller has not agreed yet or the deal is already closed");
         require(msg.sender == NewDeals[_Id].Buyer, "Only the buyer of this deal can agree");
         NewDeals[_Id].status = Status.DealDone;
@@ -88,7 +97,7 @@ contract Deal{
         UsesAddresses[NewDeals[_Id].Buyer] = false;
         UsesAddresses[NewDeals[_Id].Seller] = false;
     }
-    function DealCancelByBuyer(uint _Id)public{
+    function DealCancelByBuyer(uint _Id)public noReentrancy{
       require(msg.sender==NewDeals[_Id].Buyer,"Only Buyer of the Deal Can Cancel This");
       require(NewDeals[_Id].status!=Status.DealDone,"Deal Is Alredy Closed");
       if(NewDeals[_Id].status==Status.DealAdd){
@@ -109,7 +118,7 @@ contract Deal{
         Balance[NewDeals[_Id].Seller]+=ToUnlock;
       }
     }
-    function SellerCancelDeal(uint _Id)public {
+    function SellerCancelDeal(uint _Id)public  noReentrancy{
         require(msg.sender==NewDeals[_Id].Seller,"Only Seller Can Agree For Deal Cancel");
         require(NewDeals[_Id].status!=Status.DealAdd);
               require(NewDeals[_Id].status!=Status.DealDone,"Deal Is Alredy Closed");
@@ -127,4 +136,3 @@ contract Deal{
     }
 
 }
-
