@@ -1,78 +1,123 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 contract Deal{
-    mapping(address=>uint256)internal  Balance ;
-    mapping(address=>uint256)public LockedAmount;
-   //  address[]public UsesAddresses;
-    mapping(address=>bool)public UsesAddresses;
-   
-      function CheckBalance()public view returns(uint){
-      return Balance[msg.sender];
-     }
-      receive() external payable {
-        require(msg.value>0,"Deposit Should be Biger then zero");
-        uint BalanceBefore=Balance[msg.sender];
-        Balance[msg.sender]+=msg.value;
-        assert(Balance[msg.sender]>BalanceBefore);
-     }
-     function WithDraw(uint _amount)public payable {
-        require(Balance[msg.sender]>=_amount,"Your Balance is not Enough for withdraw");
-        uint256 BalanceBefore=Balance[msg.sender];
-        Balance[msg.sender]-=_amount;
-        payable(msg.sender).transfer(_amount);
-        assert(Balance[msg.sender]<BalanceBefore);
-     }
-     function Deposit(uint _amount)public payable{
-      require(_amount>0,"value should not be zero");
-      uint BalanceBefore=Balance[msg.sender];
-      Balance[msg.sender]+=_amount;
-      assert(Balance[msg.sender]>BalanceBefore);
-     }
-     enum Status {DealAdd,SellerAgree,SellerAgreeDeal,BuyerAgreeeDeal,DealDone}
-     struct NewDeal{
+    mapping(address => uint256) internal Balance;
+    mapping(address => uint256) public LockedAmount;
+    mapping(address => bool) public UsesAddresses;
+    function CheckBalance() public view returns (uint) {
+        return Balance[msg.sender];
+    }
+    receive() external payable {
+        require(msg.value > 0, "Deposit should be greater than zero");
+        uint256 BalanceBefore = Balance[msg.sender];
+        Balance[msg.sender] += msg.value;
+        require(Balance[msg.sender] > BalanceBefore, "Deposit failed");
+    }
+    function Withdraw(uint _amount) public {
+        require(Balance[msg.sender] >= _amount, "Your balance is not enough for withdrawal");
+        uint256 BalanceBefore = Balance[msg.sender];
+        Balance[msg.sender] -= _amount;
+        (bool success, ) = payable(msg.sender).call{value: _amount}("");
+        require(success, "Transfer failed");
+        require(Balance[msg.sender] == BalanceBefore - _amount, "Withdrawal failed");
+    }
+    function Deposit() public payable {
+        require(msg.value > 0, "Value should not be zero");
+        uint256 BalanceBefore = Balance[msg.sender];
+        Balance[msg.sender] += msg.value;
+        require(Balance[msg.sender] > BalanceBefore, "Deposit failed");
+    }
+    enum Status {DealAdd, SellerAgree, SellerAgreeDeal, BuyerAgreeDeal, DealDone,DealCancel}
+    struct NewDeal {
         uint Id;
         uint LockAmount;
         address Seller;
         address Buyer;
+        bool BuyerCancelDeal;
+        bool SellerCancelDeal;
         Status status;
-     }
-     NewDeal[]public NewDeals;
-     function AddNewDeal(address _Seller,uint _LockAmount)public {
-        require(_LockAmount>0,"Locked Amount Should Not Be Zero");
-        require(UsesAddresses[msg.sender]!=true,"You have Already Your Previoud Deal PlZ Finsh this to continue");
-        require(msg.sender!= _Seller,"Both Buyer And Seller Can Not Be Same");
-        require(Balance[msg.sender]>=_LockAmount && Balance[_Seller]>=_LockAmount,"Both Parties Balance Should be minimum Equal to the LockAmount");
-        NewDeals.push(NewDeal(NewDeals.length,_LockAmount,_Seller,msg.sender,Status.DealAdd));       
-     }
-     function SellerAgree(uint _Id)public {
-        require(NewDeals[_Id].status==Status.DealAdd,"Deal is not Add or Alredy Close");
-        require(msg.sender==NewDeals[_Id].Seller,"Only Seller of this Deal Can Agree");
-        require(Balance[NewDeals[_Id].Seller]>=NewDeals[_Id].LockAmount && Balance[NewDeals[_Id].Buyer]>=NewDeals[_Id].LockAmount);
-        Balance[msg.sender]-=NewDeals[_Id].LockAmount;
-        Balance[NewDeals[_Id].Buyer]-=NewDeals[_Id].LockAmount;
-        UsesAddresses[NewDeals[_Id].Buyer]=true;
-        UsesAddresses[NewDeals[_Id].Seller]=true;
-        NewDeals[_Id].status=Status.SellerAgree;
-        LockedAmount[msg.sender]=NewDeals[_Id].LockAmount;
-        LockedAmount[NewDeals[_Id].Buyer]=NewDeals[_Id].LockAmount;
-     }
-     function SellerAgreeDeal(uint _Id)public{
-        require(msg.sender==NewDeals[_Id].Seller,"Only Seller of the Deal can Agree");
-        require(NewDeals[_Id].status==Status.SellerAgree,"First you will agree for continue Then Agree to Finish Deal or Deal is Alredy Closed");
-        NewDeals[_Id].status=Status.SellerAgreeDeal;
-
-     }
-     function BuyerAgree(uint _Id)public{
-        require(NewDeals[_Id].status==Status.SellerAgreeDeal,"Seller is Not Agreed Yet or Deal is Alredy CLosed");
-        require(msg.sender==NewDeals[_Id].Buyer,"Only Buyer of This Deal Can Agree");
-        NewDeals[_Id].status=Status.BuyerAgreeeDeal;
-        NewDeals[_Id].status=Status.DealDone;
-        Balance[NewDeals[_Id].Buyer]+=LockedAmount[NewDeals[_Id].Buyer];
+    }
+    NewDeal[] public NewDeals;
+    function AddNewDeal(address _Seller, uint _LockAmount) public {
+        require(_LockAmount > 0, "Locked amount should not be zero");
+        require(!UsesAddresses[msg.sender], "You have an existing deal. Please finish it to continue.");
+        require(msg.sender != _Seller, "Buyer and seller cannot be the same");
+        require(Balance[msg.sender] >= _LockAmount && Balance[_Seller] >= _LockAmount, "Both parties' balances should be at least equal to the locked amount");
+        UsesAddresses[msg.sender]=true;
+        NewDeals.push(NewDeal({
+            Id: NewDeals.length,
+            LockAmount: _LockAmount,
+            Seller: _Seller,
+            Buyer: msg.sender,
+            BuyerCancelDeal:false,
+            SellerCancelDeal:false,
+            status: Status.DealAdd
+        }));
+    }
+    function SellerAgree(uint _Id) public {
+        require(NewDeals[_Id].status == Status.DealAdd, "Deal is not added or already closed");
+        require(msg.sender == NewDeals[_Id].Seller, "Only the seller of this deal can agree");
+        require(Balance[NewDeals[_Id].Seller] >= NewDeals[_Id].LockAmount && Balance[NewDeals[_Id].Buyer] >= NewDeals[_Id].LockAmount, "Both parties should have at least the locked amount");
+        Balance[msg.sender] -= NewDeals[_Id].LockAmount;
+        Balance[NewDeals[_Id].Buyer] -= NewDeals[_Id].LockAmount;
+        UsesAddresses[NewDeals[_Id].Seller] = true;
+        NewDeals[_Id].status = Status.SellerAgree;
+        LockedAmount[msg.sender] = NewDeals[_Id].LockAmount;
+        LockedAmount[NewDeals[_Id].Buyer] = NewDeals[_Id].LockAmount;
+    }
+    function SellerAgreeDeal(uint _Id) public {
+        require(msg.sender == NewDeals[_Id].Seller, "Only the seller of the deal can agree");
+        require(NewDeals[_Id].status == Status.SellerAgree, "Seller must first agree to continue or the deal is already closed");
+        NewDeals[_Id].status = Status.SellerAgreeDeal;
+    }
+    function BuyerAgree(uint _Id) public {
+        require(NewDeals[_Id].status == Status.SellerAgreeDeal, "Seller has not agreed yet or the deal is already closed");
+        require(msg.sender == NewDeals[_Id].Buyer, "Only the buyer of this deal can agree");
+        NewDeals[_Id].status = Status.DealDone;
+        Balance[NewDeals[_Id].Buyer] += LockedAmount[NewDeals[_Id].Buyer];
+        LockedAmount[NewDeals[_Id].Buyer] = 0;
+        Balance[NewDeals[_Id].Seller] += LockedAmount[NewDeals[_Id].Seller];
+        LockedAmount[NewDeals[_Id].Seller] = 0;
+        UsesAddresses[NewDeals[_Id].Buyer] = false;
+        UsesAddresses[NewDeals[_Id].Seller] = false;
+    }
+    function DealCancelByBuyer(uint _Id)public{
+      require(msg.sender==NewDeals[_Id].Buyer,"Only Buyer of the Deal Can Cancel This");
+      require(NewDeals[_Id].status!=Status.DealDone,"Deal Is Alredy Closed");
+      if(NewDeals[_Id].status==Status.DealAdd){
+        NewDeals[_Id].BuyerCancelDeal=true;
+                LockedAmount[NewDeals[_Id].Buyer]=0;
+                UsesAddresses[NewDeals[_Id].Buyer] = false;
+                        uint ToUnlock=NewDeals[_Id].LockAmount;
+                        Balance[NewDeals[_Id].Buyer]+=ToUnlock;
+      }
+      if(NewDeals[_Id].BuyerCancelDeal==true && NewDeals[_Id].SellerCancelDeal==true){
+        NewDeals[_Id].status=Status.DealCancel;
+        uint ToUnlock=NewDeals[_Id].LockAmount;
+        UsesAddresses[NewDeals[_Id].Buyer] = false;
+        UsesAddresses[NewDeals[_Id].Seller] = false;
         LockedAmount[NewDeals[_Id].Buyer]=0;
-        Balance[NewDeals[_Id].Seller]+=LockedAmount[NewDeals[_Id].Seller];
         LockedAmount[NewDeals[_Id].Seller]=0;
-        UsesAddresses[NewDeals[_Id].Buyer]=false;
-        UsesAddresses[NewDeals[_Id].Seller]=false;
-     }
-    
+        Balance[NewDeals[_Id].Buyer]+=ToUnlock;
+        Balance[NewDeals[_Id].Seller]+=ToUnlock;
+      }
+
+
+    }
+    function SellerCancelDeal(uint _Id)public {
+        require(msg.sender==NewDeals[_Id].Seller,"Only Seller Can Agree For Deal Cancel");
+        require(NewDeals[_Id].status!=Status.DealAdd);
+        NewDeals[_Id].SellerCancelDeal=true;
+        if(NewDeals[_Id].BuyerCancelDeal==true && NewDeals[_Id].SellerCancelDeal==true){
+        NewDeals[_Id].status=Status.DealCancel;
+        uint ToUnlock=NewDeals[_Id].LockAmount;
+        UsesAddresses[NewDeals[_Id].Buyer] = false;
+        UsesAddresses[NewDeals[_Id].Seller] = false;
+        LockedAmount[NewDeals[_Id].Buyer]=0;
+        LockedAmount[NewDeals[_Id].Seller]=0;
+        Balance[NewDeals[_Id].Buyer]+=ToUnlock;
+        Balance[NewDeals[_Id].Seller]+=ToUnlock;
+      }
+    }
+
 }
