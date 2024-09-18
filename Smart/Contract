@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 contract Deal{
-    mapping(address=>uint256)internal  Balance;
+    mapping(address=>uint256)internal  Balance ;
     mapping(address=>uint256)public LockedAmount;
    //  address[]public UsesAddresses;
     mapping(address=>bool)public UsesAddresses;
@@ -47,7 +47,7 @@ contract Deal{
      function SellerAgree(uint _Id)public {
         require(NewDeals[_Id].status==Status.DealAdd,"Deal is not Add or Alredy Close");
         require(msg.sender==NewDeals[_Id].Seller,"Only Seller of this Deal Can Agree");
-        require(Balance[msg.sender]==NewDeals[_Id].LockAmount && Balance[NewDeals[_Id].Buyer]==NewDeals[_Id].LockAmount,"Both Parties Balance Shoudl be eqaul to Minimum of LockAmount");
+        require(Balance[NewDeals[_Id].Seller]>=NewDeals[_Id].LockAmount && Balance[NewDeals[_Id].Buyer]>=NewDeals[_Id].LockAmount);
         Balance[msg.sender]-=NewDeals[_Id].LockAmount;
         Balance[NewDeals[_Id].Buyer]-=NewDeals[_Id].LockAmount;
         UsesAddresses[NewDeals[_Id].Buyer]=true;
