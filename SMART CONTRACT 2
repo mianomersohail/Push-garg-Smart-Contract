@@ -1,118 +1,158 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
+
 contract Dealing {
     // State variables
     mapping(address => uint256) internal Balance;
-    mapping(uint256 => Deals) internal NewDeals;
+    mapping(uint256 => Deals) public NewDeals;
     uint256 public nextDealId; // Counter for unique Deal IDs
-    //ALL MAPPING
-    mapping(address=>uint256)public LockAmount;
-    //ALL MODIFIERS
-    modifier OnlyUser1(uint _Id){
-        require(msg.sender==NewDeals[_Id].User1);
+    mapping(address => uint256) public LockAmount;
+
+    // Events
+    event DepositMade(address indexed user, uint256 amount);
+    event WithdrawalMade(address indexed user, uint256 amount);
+    event DealCreated(uint256 indexed dealId, address indexed user1, address indexed user2, uint256 amount);
+    event AgreementMade(uint256 indexed dealId, address indexed user, bool isUser1);
+    event DealStatusUpdated(uint256 indexed dealId, Status status);
+    event SatisfactionMarked(uint256 indexed dealId, address indexed user, bool isUser1);
+    event DealClosed(uint256 indexed dealId, address user1, address user2);
+
+    // Modifiers
+    modifier OnlyUser1(uint _Id) {
+        require(msg.sender == NewDeals[_Id].User1, "Not User1");
         _;
     }
-    modifier OnlyUser2(uint _Id){
-        require(msg.sender==NewDeals[_Id].User2);
+
+    modifier OnlyUser2(uint _Id) {
+        require(msg.sender == NewDeals[_Id].User2, "Not User2");
         _;
     }
-    modifier Balancecheck(uint _Id){
-        require(Balance[msg.sender]>=NewDeals[_Id].Amount);
+
+    modifier BalanceCheck(uint _Id) {
+        require(Balance[msg.sender] >= NewDeals[_Id].Amount, "Insufficient Balance");
         _;
     }
-    modifier OnlyPending(uint _Id){
-        require(NewDeals[_Id].dealStatus==Status.Pending,"The Status Should be Pending");
+
+    modifier OnlyPending(uint _Id) {
+        require(NewDeals[_Id].dealStatus == Status.Pending, "Deal is not Pending");
         _;
     }
-    modifier UserNotSame(address _User1,address _User2){
-        require(_User1!=_User2,"User1 and User2 Cannot be of Same Address");
+
+    modifier UserNotSame(address _User1, address _User2) {
+        require(_User1 != _User2, "Users cannot be the same");
         _;
     }
-    modifier  DealClos(uint _Id){
-        require(NewDeals[_Id].dealStatus==Status.DealAdd,"Deal is not Add yet or Alredy Closed");
+
+    modifier DealClosed(uint _Id) {
+        require(NewDeals[_Id].dealStatus == Status.DealAdd, "Deal is not Add yet or Already Closed");
         _;
     }
-    //ENUM FOR STATUS TRACK
-    enum Status { Pending, DealAdd ,DealClose}
-    //STRUCT FOR ADDING NEW DEAL
+
+    // Enum for Status Track
+    enum Status { Pending, DealAdd, DealClose }
+
+    // Struct for Adding New Deal
     struct Deals {
         uint256 Id;
         uint256 Amount;
         address User1;
         address User2;
-         bool User1Agree;
-         bool User2Agree;
-         bool User1Done;
-         bool User2Done;
+        bool User1Agree;
+        bool User2Agree;
+        bool User1Done;
+        bool User2Done;
         Status dealStatus;
     }
-    //ALL FUNCTIONS
-    function Withdraw(uint Amount)public payable{
-        require(Balance[msg.sender]>=Amount,"Your Balance is Not Enough for Withdraw");
-        uint BalanceBefore=Balance[msg.sender];
-        Balance[msg.sender]-=Amount;
+
+    // Functions
+    function Withdraw(uint256 Amount) public {
+        require(Balance[msg.sender] >= Amount, "Insufficient Balance");
+        Balance[msg.sender] -= Amount;
         payable(msg.sender).transfer(Amount);
-        assert(BalanceBefore>Balance[msg.sender]);
+        emit WithdrawalMade(msg.sender, Amount); // Emit event for withdrawal
     }
-    function Deposit(uint Amount)public{
-        assert(Amount>0);
-        Balance[msg.sender]+=Amount;
+
+    function Deposit() public payable {
+        require(msg.value > 0, "Invalid Deposit");
+        Balance[msg.sender] += msg.value;
+        emit DepositMade(msg.sender, msg.value); // Emit event for deposit
     }
-    receive() external payable { 
-        assert(msg.value>0);
-        Balance[msg.sender]+=msg.value;
+
+    receive() external payable {
+        require(msg.value > 0, "Invalid Deposit");
+        Balance[msg.sender] += msg.value;
+        emit DepositMade(msg.sender, msg.value); // Emit event for deposit
     }
-    function NewDeal(uint256 _Amount, address _User1, address _User2) public UserNotSame(_User1,_User2) {
+
+    function Balances() public view returns (uint256) {
+        return Balance[msg.sender];
+    }
+
+    function NewDeal(uint256 _Amount, address _User1, address _User2) public UserNotSame(_User1, _User2) {
         uint256 dealId = nextDealId++;
         NewDeals[dealId] = Deals({
             Id: dealId,
             Amount: _Amount,
             User1: _User1,
             User2: _User2,
-            User1Agree:false,
-            User2Agree:false,
-            User1Done:false,
-            User2Done:false,
-            dealStatus: Status.Pending // Use Status.Pending here
+            User1Agree: false,
+            User2Agree: false,
+            User1Done: false,
+            User2Done: false,
+            dealStatus: Status.Pending
         });
-        nextDealId++;
+        emit DealCreated(dealId, _User1, _User2, _Amount); // Emit event for deal creation
     }
-    function User1Agree(uint _Id)public Balancecheck(_Id) OnlyUser1(_Id) OnlyPending(_Id){
-        NewDeals[_Id].User1Agree=true;
-        if(NewDeals[_Id].User1Agree==true && NewDeals[_Id].User2Agree==true){
-        NewDeals[_Id].dealStatus=Status.DealAdd;
-        Balance[NewDeals[_Id].User1]-=NewDeals[_Id].Amount;
-        Balance[NewDeals[_Id].User2]-=NewDeals[_Id].Amount;
-        LockAmount[NewDeals[_Id].User1]+=NewDeals[_Id].Amount;
-        LockAmount[NewDeals[_Id].User2]+=NewDeals[_Id].Amount;
-        }
-    }
-     function User2Agree(uint _Id)public Balancecheck(_Id) OnlyUser2(_Id) OnlyPending(_Id){
-        NewDeals[_Id].User2Agree=true;
-        if(NewDeals[_Id].User1Agree==true && NewDeals[_Id].User2Agree==true){
-        NewDeals[_Id].dealStatus=Status.DealAdd;            
+
+    function User1Agree(uint256 _Id) public BalanceCheck(_Id) OnlyUser1(_Id) OnlyPending(_Id) {
+        require(!NewDeals[_Id].User1Agree, "You Already Agreed");
+        NewDeals[_Id].User1Agree = true;
+        emit AgreementMade(_Id, msg.sender, true); // Emit event for User1 agreement
+        if (NewDeals[_Id].User1Agree && NewDeals[_Id].User2Agree) {
+            NewDeals[_Id].dealStatus = Status.DealAdd;
+            Balance[NewDeals[_Id].User1] -= NewDeals[_Id].Amount;
+            Balance[NewDeals[_Id].User2] -= NewDeals[_Id].Amount;
+            LockAmount[NewDeals[_Id].User1] += NewDeals[_Id].Amount;
+            LockAmount[NewDeals[_Id].User2] += NewDeals[_Id].Amount;
+            emit DealStatusUpdated(_Id, Status.DealAdd); // Emit event for deal status update
         }
     }
-    function User1Satisfy(uint _Id)public DealClos(_Id) OnlyUser1(_Id){
-       require(NewDeals[_Id].User1Done!=true,"You already Done to Close Deal");
-       NewDeals[_Id].User1Done=true;
-       if(NewDeals[_Id].User1Done==true&& NewDeals[_Id].User2Done==true){
-                NewDeals[_Id].dealStatus=Status.DealClose;
-         Balance[NewDeals[_Id].User1]+=NewDeals[_Id].Amount;
-        Balance[NewDeals[_Id].User2]+=NewDeals[_Id].Amount;
-        LockAmount[NewDeals[_Id].User1]-=NewDeals[_Id].Amount;
-        LockAmount[NewDeals[_Id].User2]-=NewDeals[_Id].Amount;
+
+    function User2Agree(uint256 _Id) public BalanceCheck(_Id) OnlyUser2(_Id) OnlyPending(_Id) {
+        require(!NewDeals[_Id].User2Agree, "You Already Agreed");
+        NewDeals[_Id].User2Agree = true;
+        emit AgreementMade(_Id, msg.sender, false); // Emit event for User2 agreement
+        if (NewDeals[_Id].User1Agree && NewDeals[_Id].User2Agree) {
+            NewDeals[_Id].dealStatus = Status.DealAdd;
+            emit DealStatusUpdated(_Id, Status.DealAdd); // Emit event for deal status update
         }
     }
-    function User2Satisfy(uint _Id)public DealClos(_Id) OnlyUser2(_Id){
-       require(NewDeals[_Id].User2Done!=true,"You already Done to Close Deal");
-       NewDeals[_Id].User2Done=true;
-       if(NewDeals[_Id].User1Done==true&& NewDeals[_Id].User2Done==true){
-                NewDeals[_Id].dealStatus=Status.DealClose;
-         Balance[NewDeals[_Id].User1]+=NewDeals[_Id].Amount;
-        Balance[NewDeals[_Id].User2]+=NewDeals[_Id].Amount;
-        LockAmount[NewDeals[_Id].User1]-=NewDeals[_Id].Amount;
-        LockAmount[NewDeals[_Id].User2]-=NewDeals[_Id].Amount;
+
+    function User1Satisfy(uint256 _Id) public DealClosed(_Id) OnlyUser1(_Id) {
+        require(!NewDeals[_Id].User1Done, "Already Done");
+        NewDeals[_Id].User1Done = true;
+        emit SatisfactionMarked(_Id, msg.sender, true); // Emit event for User1 satisfaction
+        if (NewDeals[_Id].User1Done && NewDeals[_Id].User2Done) {
+            NewDeals[_Id].dealStatus = Status.DealClose;
+            Balance[NewDeals[_Id].User1] += NewDeals[_Id].Amount;
+            Balance[NewDeals[_Id].User2] += NewDeals[_Id].Amount;
+            LockAmount[NewDeals[_Id].User1] -= NewDeals[_Id].Amount;
+            LockAmount[NewDeals[_Id].User2] -= NewDeals[_Id].Amount;
+            emit DealClosed(_Id, NewDeals[_Id].User1, NewDeals[_Id].User2); // Emit event for deal closure
         }
+    }
+
+    function User2Satisfy(uint256 _Id) public DealClosed(_Id) OnlyUser2(_Id) {
+        require(!NewDeals[_Id].User2Done, "Already Done");
+        NewDeals[_Id].User2Done = true;
+        emit SatisfactionMarked(_Id, msg.sender, false); // Emit event for User2 satisfaction
+        if (NewDeals[_Id].User1Done && NewDeals[_Id].User2Done) {
+            NewDeals[_Id].dealStatus = Status.DealClose;
+            Balance[NewDeals[_Id].User1] += NewDeals[_Id].Amount;
+            Balance[NewDeals[_Id].User2] += NewDeals[_Id].Amount;
+            LockAmount[NewDeals[_Id].User1] -= NewDeals[_Id].Amount;
+            LockAmount[NewDeals[_Id].User2] -= NewDeals[_Id].Amount;
+            emit DealClosed(_Id, NewDeals[_Id].User1, NewDeals[_Id].User2); // Emit event for deal closure
         }
-        }
+    }
+}
