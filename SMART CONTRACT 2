@@ -15,7 +15,7 @@ contract Dealing {
     event AgreementMade(uint256 indexed dealId, address indexed user, bool isUser1);
     event DealStatusUpdated(uint256 indexed dealId, Status status);
     event SatisfactionMarked(uint256 indexed dealId, address indexed user, bool isUser1);
-    event DealClosed(uint256 indexed dealId, address user1, address user2);
+    event DealsClosed(uint256 indexed dealId, address user1, address user2);
 
     // Modifiers
     modifier OnlyUser1(uint _Id) {
@@ -138,7 +138,7 @@ contract Dealing {
             Balance[NewDeals[_Id].User2] += NewDeals[_Id].Amount;
             LockAmount[NewDeals[_Id].User1] -= NewDeals[_Id].Amount;
             LockAmount[NewDeals[_Id].User2] -= NewDeals[_Id].Amount;
-            emit DealClosed(_Id, NewDeals[_Id].User1, NewDeals[_Id].User2); // Emit event for deal closure
+            emit DealsClosed(_Id, NewDeals[_Id].User1, NewDeals[_Id].User2); // Emit event for deal closure
         }
     }
 
@@ -152,7 +152,7 @@ contract Dealing {
             Balance[NewDeals[_Id].User2] += NewDeals[_Id].Amount;
             LockAmount[NewDeals[_Id].User1] -= NewDeals[_Id].Amount;
             LockAmount[NewDeals[_Id].User2] -= NewDeals[_Id].Amount;
-            emit DealClosed(_Id, NewDeals[_Id].User1, NewDeals[_Id].User2); // Emit event for deal closure
+            emit DealsClosed(_Id, NewDeals[_Id].User1, NewDeals[_Id].User2); // Emit event for deal closure
         }
     }
 }
